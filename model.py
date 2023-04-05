@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+import tiktoken
+
 import sys
 
 
@@ -11,15 +13,11 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 with open('data/data.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
-# define encoding and decoding functions (tokenizer)
-chars = sorted(list(set(text)))
-stoi = { ch:i for i, ch in enumerate(chars) }
-itos = { i:ch for i, ch in enumerate(chars) }
-encode = lambda s: [stoi[c] for c in s]          # encoder: take a string and output a list of integers
-decode = lambda l: ''.join([itos[i] for i in l]) # decoder: take a list of integers, output a string
+# initialize encoder
+enc = tiktoken.get_encoding("gpt2")
 
 # encoding the entire dataset into a tensor
-data = torch.tensor(encode(text), dtype=torch.long)
+data = torch.tensor(enc.encode(text), dtype=torch.long)
 
 # build dataset
 n = int(0.9 * len(data)) 
@@ -69,7 +67,7 @@ def generate(max_new_tokens):
         idx_next = torch.multinomial(probs, num_samples=1)
         # append sampled index to the running sequence
         idx = torch.cat((idx, idx_next))
-    print(decode(idx.tolist()))
+    print(enc.decode(idx.tolist()))
 
 def train(max_steps):
     # train the model
@@ -186,11 +184,11 @@ class LSTM(nn.Module):
 
     
 # Hyperparameters-------
-vocab_size = len(chars)
+vocab_size = enc.n_vocab
 hidden_size = 512
 embd_size = 192
-batch_size = 32
-block_size = 512
+batch_size = 8
+block_size = 256
 learning_rate = 3e-4
 # ----------------------
 
