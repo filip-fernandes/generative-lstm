@@ -1,14 +1,11 @@
 # text-gen-lstm
-My implementation of a very simple character-level LSTM model for generating text using PyTorch. I trained it on the Tiny Shakespeare dataset, a 1 MB collection of various Shakespeare texts.
+My implementation of a very simple subword-level LSTM model for generating text using PyTorch. I trained it on the Tiny Shakespeare dataset, a 1 MB collection of various Shakespeare texts.
 
 ### Performance:
 With 2.2M parameters, the network reached an approximate loss of 1.54 after a bit more than 10 hours of training using an NVIDIA GTX 1060 3G GPU. The text generated is nonsensical but looks kind of "Shakespearian."
 
 ### How it works:
-The text is converted into tokens, with each token representing a character in the text. Then, the tokens are embedded, reshaped, and fed into the LSTM layer. After that, the output goes into a linear layer to form the logits. Finally, the logits are either used to calculate the loss (during training, using cross-entropy loss) or used to predict the next character (during inference, via a softmax layer).
-
-### Files:
-The ```src``` folder contains two files for the same model: ```model.py ``` and ```model.ipynb```. They work exactly the same. The ```pretrained``` folder contains a pretrained model (the same one that reached the specified loss above). Lastly, the text used to train the model, the Tiny Shakespeare dataset, can be found in the ```data``` folder.
+The text is converted into tokens using the tiktoken encoder (https://github.com/openai/tiktoken), with each token representing a subword piece in the text. Then, the tokens are embedded, reshaped, and fed into the LSTM layer. After that, the output goes into a linear layer to form the logits. Finally, the logits are either used to calculate the loss (during training, using cross-entropy loss) or used to predict the next character (during inference, via a softmax layer).
 
 ### Running:
 To run on your device, do ```py model.py``` or ```py model.py [PRETRAINED_MODEL]``` to load and use a pretrained model.
