@@ -8,7 +8,7 @@ import sys
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # read it in to inspect it
-with open('input.txt', 'r', encoding='utf-8') as f:
+with open('data/data.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # define encoding and decoding functions (tokenizer)
@@ -34,7 +34,7 @@ def get_batch(split):
     y = torch.stack([data[i + 1: i + block_size + 1] for i in ix])
     x = x.to(device)
     y = y.to(device)
-    return x[0], y[0]
+    return x, y
 
 def get_num_params():
     # print the number of parameters of the model
@@ -63,7 +63,7 @@ def generate(max_new_tokens):
     idx = torch.tensor([0]).to(device) # seed for generating text (aka starting character)
     print('generating new text...')
     for i in range(max_new_tokens):
-        logits, loss = model(idx, y=None)
+        logits, loss = model(idx, y=None, infering=True)
         logits = logits[-1, :]
         probs = F.softmax(logits, dim=-1)
         idx_next = torch.multinomial(probs, num_samples=1)
@@ -92,6 +92,7 @@ class LSTM(nn.Module):
     def __init__(self, hidden_size, output_size, embd_size):
         super().__init__()
         self.hidden_size = hidden_size
+        self.output_size = output_size
         self.emb = nn.Embedding(output_size, embd_size) 
         self.linear = nn.Linear(embd_size, hidden_size)
         self.forget_gate = nn.Sequential(
@@ -115,63 +116,80 @@ class LSTM(nn.Module):
         self.tanh = nn.Tanh()
         self.lm_head = nn.Linear(hidden_size, output_size)
 
-    def forward(self, X, y=None):
+    def forward(self, X, y=None, infering=False):
         # embed the characters
         X = self.emb(X)
-
+    
         # reshape the embeddings
         X = self.linear(X) # (hidden_size, 1)
 
         # takes ht-1 and ct-1 and outputs h and c.
         def lstm_cell(c, h, x):
-            
+
             # concatenate input to h
-            h_x = torch.concat((h, x))
+            h_x = torch.concat((h, x), dim=-1) # (hidden_size +  hidden_size, 1)
+
             
             # forget gate
-            fout = self.forget_gate(h_x)
+            fout = self.forget_gate(h_x) # (hidden_size, 1)
             # update c
             c = c * fout
 
             # input gate
-            isig = self.input_gate[0](h_x) 
-            itanh = self.input_gate[1](h_x) 
+            isig = self.input_gate[0](h_x) # (hidden_size, 1)
+            itanh = self.input_gate[1](h_x) # (hidden_size, 1)
             iout = isig * itanh 
             # update c
             c = c + iout 
 
             # output gate    
-            oout = self.output_gate(h_x) 
+            oout = self.output_gate(h_x) # (hidden_size, 1)
             h = self.tanh(c) * oout
             
-            return c, h 
+            return c, h # (hidden_size, 1) both
 
-        # initialize h and c to 0
-        c = torch.zeros(self.hidden_size).to(device)
-        h = torch.zeros(self.hidden_size).to(device)
+        if not infering:
+            B, T, C = X.shape
+            # initialize h and c to 0
+            c = torch.zeros(B, C).to(device)
+            h = torch.zeros(B, C).to(device)
 
-        to_fill = torch.zeros(X.shape[0], self.hidden_size).to(device)
-
-        # iterate through time
-        for i, x in enumerate(X):
-            c, h = lstm_cell(c, h, x)
-            to_fill[i] = h
+            to_fill = torch.zeros((B, T, self.hidden_size)).to(device)
         
+            for i in range(T):
+                x = X[:, i]
+                #print(x.shape)
+                c, h = lstm_cell(c, h, x)
+                to_fill[:, i] = h
+        else:
+            T, C = X.shape
+            # initialize h and c to 0
+            c = torch.zeros(C).to(device)
+            h = torch.zeros(C).to(device)
+
+            to_fill = torch.zeros((T, C)).to(device)
+    
+            for i in range(T):
+                x = X[i]
+                c, h = lstm_cell(c, h, x)
+                to_fill[i] = h
+
         # get logits
-        logits = self.lm_head(to_fill)
+        logits = self.lm_head(to_fill) * 0.1
 
         if y is None:
              return logits, None
             
         # calculate loss
-        loss = F.cross_entropy(logits, y)
+        loss = F.cross_entropy(logits.view(batch_size * block_size, self.output_size), y.view(batch_size * block_size))
         return logits, loss
+
     
 # Hyperparameters-------
 vocab_size = len(chars)
 hidden_size = 512
 embd_size = 192
-batch_size = 1
+batch_size = 32
 block_size = 512
 learning_rate = 3e-4
 # ----------------------
@@ -185,10 +203,10 @@ def main():
     # training, evaluation and generation parameters
     training_steps = 50000
     evaluation_steps = 500
-    new_tokens = 50
+    new_tokens = 500
 
     # Check for loading pretrained model
-    if sys.argv[1] is not None:
+    if len(sys.argv) != 1:
         try:
             model.load_state_dict(torch.load(sys.argv[1])) 
             get_num_params()
