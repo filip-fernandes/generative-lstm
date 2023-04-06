@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+import nltk
+import time
+
 import tiktoken
 
 import sys
@@ -23,6 +26,15 @@ data = torch.tensor(enc.encode(text), dtype=torch.long)
 n = int(0.9 * len(data)) 
 train_data = data[:n]
 val_data = data[n:]
+
+def beautiful_print(text):
+    # for printing like ChatGPT, one word at a time
+    tokenizer = nltk.RegexpTokenizer(r"\w+|\s+|\n|\S+|")
+    words = tokenizer.tokenize(text)
+    for word in words:
+        print(word, end="")
+        time.sleep(0.05)
+
 
 def get_batch(split):
     # generate a small batch of data of inputs x and targets y
@@ -67,7 +79,7 @@ def generate(max_new_tokens):
         idx_next = torch.multinomial(probs, num_samples=1)
         # append sampled index to the running sequence
         idx = torch.cat((idx, idx_next))
-    print(enc.decode(idx.tolist()))
+    beautiful_print(enc.decode(idx.tolist()))
 
 def train(max_steps):
     # train the model
@@ -206,7 +218,8 @@ def main():
     # Check for loading pretrained model
     if len(sys.argv) != 1:
         try:
-            model.load_state_dict(torch.load(sys.argv[1])) 
+            model.load_state_dict(torch.load(sys.argv[1]))
+            print("model successfully loaded")
             get_num_params()
             generate(new_tokens)
         except:
